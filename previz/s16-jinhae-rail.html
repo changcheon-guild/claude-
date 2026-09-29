@@ -1,0 +1,513 @@
+<title>S16 경화역 철길 프리비즈</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap">
+<style>
+/* Layout: edit-bay monitor (S16). Viewer + pass switch + beat timeline on the left, character sheet + prompt pack on the right; stacks on narrow screens. */
+:root {
+  --bg: #141316;
+  --panel: #1d1b20;
+  --line: #322f36;
+  --fg: #eeeaf0;
+  --muted: #9c95a0;
+  --accent: #f08fb0;
+  --accent-soft: #3a2230;
+  --font-body: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  color-scheme: dark;
+}
+html, body { background: var(--bg); color: var(--fg); }
+body { font-family: var(--font-body); font-size: 15px; line-height: 1.55; }
+.wrap { max-width: 1320px; margin: 0 auto; padding-inline: 16px; padding-block: 24px 48px; display: grid; gap: 20px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 24px; }
+h1 { margin: 0; font-size: 26px; font-weight: 600; text-wrap: balance; }
+h2 { margin: 0; font-size: 13px; font-family: var(--font-mono); font-weight: 500; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.meta { font-family: var(--font-mono); font-size: 12px; letter-spacing: .08em; color: var(--muted); text-transform: uppercase; }
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 20px; align-items: start; }
+@media (max-width: 1000px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+.col { display: grid; gap: 10px; min-width: 0; }
+
+.viewport { position: relative; width: 100%; max-width: 100%; aspect-ratio: 16 / 9; background: #000; border: 1px solid var(--line); overflow: hidden; }
+.viewport canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.pip { position: absolute; right: 2%; bottom: 12%; width: 32%; border: 1px solid rgba(255,255,255,.5); background: #000; }
+.pip video { display: block; width: 100%; }
+.pip span { position: absolute; left: 6px; top: 4px; font: 500 10px var(--font-mono); letter-spacing: .08em; color: #fff; text-shadow: 0 1px 2px #000; }
+.hud { position: absolute; inset: 0; pointer-events: none; font-family: var(--font-mono); font-size: clamp(10px, 1.3vw, 13px); letter-spacing: .06em; color: #fff; }
+.hud > div { position: absolute; display: flex; gap: 10px; align-items: center; text-shadow: 0 1px 2px rgba(0,0,0,.6); }
+.hud-tl { top: 3%; left: 2.5%; } .hud-tr { top: 3%; right: 2.5%; } .hud-bl { bottom: 3.5%; left: 2.5%; right: 2.5%; justify-content: center; }
+.badge { background: #fff; color: #111; font-weight: 500; padding: 1px 7px; text-shadow: none; }
+.spec { background: rgba(10,8,10,.55); padding: 3px 10px; }
+.state { color: var(--accent); }
+
+.row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.row .spacer { flex: 1; }
+button, .file-btn { font: inherit; color: var(--fg); background: var(--panel); border: 1px solid var(--line); height: 34px; min-width: 34px; padding: 0 10px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; border-radius: 2px; }
+button:hover, .file-btn:hover { border-color: var(--muted); }
+button:focus-visible, .file-btn:focus-within, textarea:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+button svg { width: 14px; height: 14px; fill: currentColor; }
+.mono { font-family: var(--font-mono); font-size: 12px; letter-spacing: .06em; }
+.tc { font-family: var(--font-mono); font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.seg-group { display: inline-flex; }
+.seg-group button { border-radius: 0; margin-left: -1px; }
+.seg-group button:first-child { border-radius: 2px 0 0 2px; margin-left: 0; }
+.seg-group button:last-child { border-radius: 0 2px 2px 0; }
+
+.timeline { position: relative; display: flex; height: 44px; border: 1px solid var(--line); background: var(--panel); cursor: pointer; touch-action: none; user-select: none; }
+.beat { position: relative; display: flex; flex-direction: column; justify-content: center; padding-left: 8px; border-right: 1px solid var(--line); font-size: 12px; color: var(--muted); overflow: hidden; white-space: nowrap; min-width: 0; line-height: 1.3; }
+.beat:last-of-type { border-right: 0; }
+.beat small { font-family: var(--font-mono); font-size: 10.5px; }
+.beat.active { color: var(--fg); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.playhead { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; background: var(--accent); pointer-events: none; }
+.playhead::before { content: ""; position: absolute; top: 0; left: -4px; border: 5px solid transparent; border-top-color: var(--accent); }
+
+.panel { border: 1px solid var(--line); background: var(--panel); padding: 14px; display: grid; gap: 12px; min-width: 0; }
+.sheet { position: relative; border: 1px dashed var(--line); min-height: 150px; display: grid; place-items: center; text-align: center; color: var(--muted); font-size: 13px; padding: 10px; }
+.sheet.drag { border-color: var(--accent); color: var(--fg); }
+.sheet canvas { max-width: 100%; display: block; cursor: crosshair; }
+.hint { font-size: 12.5px; color: var(--muted); line-height: 1.5; }
+.parts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.part { height: auto; padding: 6px; display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 6px; align-items: center; text-align: left; font-size: 12.5px; }
+.part i { width: 18px; height: 18px; border: 1px solid rgba(255,255,255,.25); display: block; }
+.part[aria-pressed="true"] { background: var(--accent-soft); }
+label.fld { display: grid; gap: 4px; font-size: 12.5px; color: var(--muted); }
+textarea { font: 13px/1.5 var(--font-body); color: var(--fg); background: var(--bg); border: 1px solid var(--line); padding: 8px; resize: vertical; min-height: 64px; width: 100%; box-sizing: border-box; }
+textarea.prompt { font-family: var(--font-mono); font-size: 11.5px; min-height: 220px; }
+input[type=range] { width: 100%; accent-color: var(--accent); }
+.beats-list { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--line); }
+.beats-list li { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+.beats-list .t { font-family: var(--font-mono); font-size: 12px; color: var(--muted); padding-top: 2px; font-variant-numeric: tabular-nums; }
+.files { display: grid; gap: 4px; font-family: var(--font-mono); font-size: 12px; }
+.files div { display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px solid var(--line); padding: 4px 0; }
+.files span:last-child { color: var(--muted); text-align: right; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>S16 · 경화역 철길 질주 프리비즈</h1>
+    <div class="meta">Jinhae Gunhangje · 5.0 sec · 120 frames · 24 fps · 35mm side track</div>
+  </header>
+
+  <div class="layout">
+    <section class="col" aria-label="프리비즈 뷰어">
+      <div class="viewport" id="vp">
+        <canvas id="c"></canvas>
+        <div class="hud" aria-hidden="true">
+          <div class="hud-tl"><span class="badge">S16</span><span id="hudPass">SHADED</span><span>35MM</span></div>
+          <div class="hud-tr"><span class="state" id="hudState">● PLAY</span><span id="hudTc">00:00:00:00</span></div>
+          <div class="hud-bl"><span class="spec" id="hudBeat"></span></div>
+        </div>
+      </div>
+
+      <div class="row">
+        <button id="bPlay" aria-label="재생/일시정지"><svg viewBox="0 0 16 16" id="playIcon"><path d="M4 2l10 6-10 6z"/></svg></button>
+        <button id="bStep" aria-label="한 프레임 앞으로"><svg viewBox="0 0 16 16"><path d="M11 2h2v12h-2zM2 2v12l8-6z"/></svg></button>
+        <span class="tc" id="tc">f 000 / 120</span>
+        <span class="spacer"></span>
+        <div class="seg-group" role="group" aria-label="렌더 패스">
+          <button data-pass="shaded" aria-pressed="true"><span class="mono">셰이딩</span></button>
+          <button data-pass="depth" aria-pressed="false"><span class="mono">뎁스</span></button>
+          <button data-pass="mask" aria-pressed="false"><span class="mono">마스크</span></button>
+        </div>
+        <button id="bBlur" aria-pressed="true"><span class="mono">모션블러</span></button>
+      </div>
+
+      <div class="timeline" id="tl" role="slider" aria-label="타임라인" aria-valuemin="0" aria-valuemax="5" aria-valuenow="0" tabindex="0">
+        <div class="playhead" id="ph"></div>
+      </div>
+
+      <div class="panel">
+        <h2>비트</h2>
+        <ul class="beats-list" id="beatList"></ul>
+        <p class="hint">콘티 S16 기준: 옆에서 나란히 따라가는 트래킹, 아이는 팔을 벌리고 왼쪽에서 오른쪽으로 달린다. 배경의 가로 스트릭은 과장된 셔터(약 1/12초) 모션블러로 재현했고(아이는 선명하게 유지), 뎁스·마스크 패스에는 블러를 넣지 않았습니다.</p>
+      </div>
+    </section>
+
+    <aside class="col" aria-label="캐릭터 시트와 생성 패키지">
+      <div class="panel">
+        <h2>캐릭터 시트</h2>
+        <div class="sheet" id="sheet">
+          <div id="sheetEmpty">이미지를 여기로 끌어오거나<br><label class="file-btn" style="margin-top:8px">파일 선택<input type="file" id="sheetFile" accept="image/*" class="sr"></label></div>
+          <canvas id="sheetCanvas" hidden></canvas>
+        </div>
+        <p class="hint">파츠를 고른 뒤 시트 이미지를 클릭하면 그 색이 아이 마네킹에 바로 입혀집니다. 한 번 찍을 때마다 다음 파츠로 넘어갑니다.</p>
+        <div class="parts" id="parts"></div>
+        <label class="fld">키 <span id="hVal" class="mono"></span><input type="range" id="height" min="0.95" max="1.45" step="0.01" value="1.15"></label>
+      </div>
+
+      <div class="panel">
+        <h2>생성 프롬프트</h2>
+        <label class="fld">캐릭터 설명 (시트 내용으로 바꾸세요)<textarea id="desc"></textarea></label>
+        <label class="fld">스타일<textarea id="style"></textarea></label>
+        <label class="fld">최종 프롬프트<textarea id="prompt" class="prompt" readonly></textarea></label>
+        <div class="row"><button id="bCopy"><span class="mono">프롬프트 복사</span></button><span class="hint" id="copyMsg"></span></div>
+      </div>
+
+      <div class="panel">
+        <h2>생성 패키지 (저장소 previz/out/s16/)</h2>
+        <div class="files">
+          <div><span>s16_shaded.mp4</span><span>카메라·동선 기준 (블러)</span></div>
+          <div><span>s16_shaded_sharp.mp4</span><span>블러 없는 버전</span></div>
+          <div><span>s16_depth.mp4</span><span>뎁스 컨트롤</span></div>
+          <div><span>s16_mask.mp4</span><span>아이 마스크</span></div>
+        </div>
+        <p class="hint">비디오 투 비디오 툴에 셰이딩(또는 뎁스) 영상을 모션 소스로, 캐릭터 시트를 이미지 레퍼런스로 넣고 위 프롬프트를 붙이면 됩니다. 뎁스 컨트롤에는 sharp 버전 기준이 더 안정적입니다.</p>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js"></script>
+<script>
+(() => {
+'use strict';
+const V = (x, y, z) => new THREE.Vector3(x, y, z);
+const UP = V(0, 1, 0);
+const lerp = (a, b, t) => a + (b - a) * t;
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const rng = seed => () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+const DUR = 5, FPS = 24, FRAMES = Math.round(DUR * FPS);
+const SHUTTER = .08, SUBFRAMES = 12;
+
+function track(keys) {
+  const n = keys.length;
+  return t => {
+    if (t <= keys[0][0]) return keys[0].slice(1);
+    if (t >= keys[n - 1][0]) return keys[n - 1].slice(1);
+    let i = 0; while (keys[i + 1][0] < t) i++;
+    const p0 = keys[Math.max(i - 1, 0)], p1 = keys[i], p2 = keys[i + 1], p3 = keys[Math.min(i + 2, n - 1)];
+    const u = (t - p1[0]) / (p2[0] - p1[0]), u2 = u * u, u3 = u2 * u;
+    return p1.slice(1).map((_, k) => { const a = p0[k + 1], b = p1[k + 1], c = p2[k + 1], d = p3[k + 1];
+      return .5 * (2 * b + (-a + c) * u + (2 * a - 5 * b + 4 * c - d) * u2 + (-a + 3 * b - 3 * c + d) * u3); });
+  };
+}
+const matCache = {};
+const M = (c, o = {}) => { const k = c + JSON.stringify(o); return matCache[k] || (matCache[k] = new THREE.MeshLambertMaterial(Object.assign({ color: c }, o))); };
+function mesh(geo, mat, cast = true, recv = true) { const m = new THREE.Mesh(geo, mat); m.castShadow = cast; m.receiveShadow = recv; return m; }
+function box(p, w, h, d, c, x, y, z) { const m = mesh(new THREE.BoxGeometry(w, h, d), typeof c === 'string' ? M(c) : c); m.position.set(x, y, z); p.add(m); return m; }
+function rod(p, a, b, r1, r2, mat, seg = 8) {
+  const dir = V(0, 0, 0).subVectors(b, a), len = dir.length();
+  const m = mesh(new THREE.CylinderGeometry(r2, r1, len, seg), typeof mat === 'string' ? M(mat) : mat);
+  m.position.copy(a).addScaledVector(dir, .5); m.quaternion.setFromUnitVectors(UP, dir.normalize()); p.add(m); return m;
+}
+function inst(p, geo, mat, list, cast = true) {
+  const im = new THREE.InstancedMesh(geo, mat, list.length), o = new THREE.Object3D(), c = new THREE.Color();
+  list.forEach((q, i) => { o.position.set(q[0], q[1], q[2]); o.rotation.set(q[3] || 0, q[4] || 0, q[5] || 0); o.scale.setScalar(q[6] || 1); o.updateMatrix(); im.setMatrixAt(i, o.matrix); if (q[7]) im.setColorAt(i, c.set(q[7])); });
+  im.castShadow = cast; im.receiveShadow = true; p.add(im); return im;
+}
+
+// ---------- renderer ----------
+const canvas = document.getElementById('c'), vp = document.getElementById('vp');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+const scene = new THREE.Scene();
+const SKY = new THREE.Color('#f2dee6'), FOG = () => new THREE.Fog(0xf0d8e1, 14, 55);
+scene.background = SKY; scene.fog = FOG();
+const camera = new THREE.PerspectiveCamera(40, 16 / 9, .1, 300); camera.filmGauge = 24.89; camera.setFocalLength(35);
+scene.add(new THREE.HemisphereLight(0xfff6fa, 0xb9aaa6, .75));
+const sun = new THREE.DirectionalLight(0xfff3e6, .8); sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048); sun.shadow.bias = -.0006;
+scene.add(sun, sun.target);
+const followSun = x => { sun.position.set(x - 6, 16, 9); sun.target.position.set(x + 2, 0, -1); };
+Object.assign(sun.shadow.camera, { left: -16, right: 16, top: 16, bottom: -16, near: 1, far: 50 }); sun.shadow.camera.updateProjectionMatrix();
+
+// ---------- set: Gyeonghwa Station rail line under cherry blossoms (track runs along +x) ----------
+const r = rng(16);
+const X0 = -30, X1 = 50, LEN = X1 - X0, XC = (X0 + X1) / 2;
+const RAIL_Z = .72, RAIL_TOP = .32, RUN_Y = .24;
+box(scene, 200, .1, 200, '#cfc8c1', XC, -.05, 0);                    // ground
+box(scene, LEN, .18, 3.4, '#a59e98', XC, .09, 0);                    // ballast bed
+const sleepers = []; for (let x = X0; x < X1; x += .62) sleepers.push([x, .21, 0]);
+inst(scene, new THREE.BoxGeometry(.24, .08, 2.5), M('#7c6b5e'), sleepers);
+[-RAIL_Z, RAIL_Z].forEach(z => { box(scene, LEN, .1, .07, '#6d7076', XC, RAIL_TOP - .05, z); box(scene, LEN, .025, .09, '#b9bcc0', XC, RAIL_TOP + .005, z); });
+// walkway + fence behind the track (the slatted fence in the board)
+box(scene, LEN, .12, 4, '#ddd6cf', XC, .06, -4.2);
+const fp = []; for (let x = X0; x < X1; x += 2) fp.push([x, .55, -2.3]);
+inst(scene, new THREE.BoxGeometry(.1, 1.1, .1), M('#8b7a6c'), fp);
+[.35, .7, 1.05].forEach(y => box(scene, LEN, .07, .05, '#9a897b', XC, y, -2.3));
+// near-side walkway (behind camera)
+box(scene, LEN, .12, 4, '#ddd6cf', XC, .06, 4.4);
+// station sign 경화역
+(() => {
+  const c = document.createElement('canvas'); c.width = 512; c.height = 160; const x = c.getContext('2d');
+  x.fillStyle = '#f7f7f5'; x.fillRect(0, 0, 512, 160); x.fillStyle = '#23407a'; x.fillRect(0, 118, 512, 42);
+  x.fillStyle = '#1d1d1f'; x.font = 'bold 84px "Apple SD Gothic Neo","Malgun Gothic",sans-serif'; x.textAlign = 'center'; x.fillText('경화역', 256, 96);
+  x.fillStyle = '#fff'; x.font = '28px sans-serif'; x.fillText('GYEONGHWA', 256, 150);
+  const mat = new THREE.MeshLambertMaterial({ map: new THREE.CanvasTexture(c) });
+  const s = box(scene, 2.4, .75, .06, mat, 14, 2.2, -3.2); rod(scene, V(13, 0, -3.2), V(13, 1.9, -3.2), .04, .04, '#555a60'); rod(scene, V(15, 0, -3.2), V(15, 1.9, -3.2), .04, .04, '#555a60'); return s;
+})();
+// display train car on a siding far behind
+box(scene, 17, 2.8, 2.7, '#e4e0d6', 28, 1.9, -9.5); box(scene, 17.02, .5, 2.72, '#6b8fb1', 28, 1.1, -9.5);
+for (let i = 0; i < 7; i++) box(scene, 1.2, .8, 2.74, '#40474d', 21 + i * 2.2, 2.5, -9.5);
+// cherry trees: rows on both sides arching over the track
+const BLOSSOM = ['#f9d4de', '#f4bfce', '#fde9ef', '#ffffff', '#f7c9d6', '#fbdde6'];
+const bl = [], BARK = M('#5e4b45');
+function tree(x, z, s, lean, minY = 3.1) {
+  const top = V(x, 2.3 * s, z + lean * .6 * s);
+  rod(scene, V(x, 0, z), top, .22 * s, .15 * s, BARK, 7);
+  const cz = z + lean * 1.9 * s, cy = 3.5 * s;
+  for (let i = 0; i < 4; i++) { const a = i / 4 * Math.PI * 2 + r() * .8; rod(scene, top, V(x + Math.cos(a) * 1.7 * s, cy + r() * .6 * s, cz + Math.sin(a) * 1.7 * s), .1 * s, .04 * s, BARK, 5); }
+  for (let i = 0; i < 26; i++) { const a = r() * Math.PI * 2, rr = Math.sqrt(r()), rad = (.5 + r() * .5) * s;
+    bl.push([x + Math.cos(a) * rr * 2.8 * s, Math.max(minY + rad * .6, cy + (r() - .35) * 1.6 * s), cz + Math.sin(a) * rr * 2.8 * s, 0, i, 0, rad, BLOSSOM[(r() * 6) | 0]]); }
+}
+for (let x = X0; x < X1; x += 5 + r() * 1.5) tree(x, -2.9 - r() * .4, 1.05 + r() * .2, .9, 2.4);
+for (let x = X0 + 2; x < X1; x += 4 + r() * 2) tree(x, -7 - r() * 1.5, 1.2 + r() * .3, .3, 1.5);
+for (let x = X0; x < X1; x += 3.5 + r() * 2) tree(x, -11 - r() * 2, 1.4 + r() * .3, 0, .8);
+for (let x = X0 + 1; x < X1; x += 5.5 + r() * 1.5) tree(x, 6.8 + r() * .5, 1.1 + r() * .2, -1.1);
+inst(scene, new THREE.IcosahedronGeometry(1, 1), new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true }), bl);
+// petals on the ground
+(() => {
+  const list = []; for (let i = 0; i < 2600; i++) { const z = (r() - .5) * 12; list.push([X0 + r() * LEN, z > -1.7 && z < 1.7 ? .26 : .13, z, -Math.PI / 2, 0, r() * 6, 1, BLOSSOM[(r() * 6) | 0]]); }
+  inst(scene, new THREE.CircleGeometry(.035, 6), new THREE.MeshLambertMaterial({ color: 0xffffff, side: THREE.DoubleSide }), list, false);
+})();
+// festival crowd (behind the fence, a few on the near walkway)
+const crowd = [];
+const SHIRTS = ['#e9e3dc', '#c7ccd2', '#a9b0b8', '#d9ccc2', '#8e959e', '#e6c9cf', '#b9c7b4', '#d4d0e3'];
+function extra(x, z, h, phone) {
+  const g = new THREE.Group(), s = h / 1.7, shirt = M(SHIRTS[(r() * SHIRTS.length) | 0]), pants = M(['#565b62', '#7a8087', '#4a4e55', '#8a8179'][(r() * 4) | 0]);
+  const legs = mesh(new THREE.CapsuleGeometry(.13 * s, .6 * s, 3, 8), pants); legs.position.y = .45 * s; g.add(legs);
+  const body = mesh(new THREE.CapsuleGeometry(.17 * s, .35 * s, 3, 8), shirt); body.position.y = 1.15 * s; body.scale.z = .7; g.add(body);
+  const head = mesh(new THREE.SphereGeometry(.11 * s, 12, 10), M('#e8d8cc')); head.position.y = 1.56 * s; g.add(head);
+  const hair = mesh(new THREE.SphereGeometry(.118 * s, 12, 8, 0, Math.PI * 2, 0, Math.PI * .55), M(['#2e2a2a', '#4a3f3a', '#6b5a4c'][(r() * 3) | 0])); hair.position.y = 1.57 * s; g.add(hair);
+  if (phone) { rod(g, V(.16 * s, 1.38 * s, 0), V(.08 * s, 1.72 * s, .25 * s), .04 * s, .035 * s, shirt, 6); box(g, .07, .13, .015, '#222', .08 * s, 1.76 * s, .27 * s); }
+  g.position.set(x, z < -2 ? .12 : .12, z); g.rotation.y = (r() - .5) * 1.2 + (z < 0 ? 0 : Math.PI); scene.add(g);
+  crowd.push({ g, ph: r() * 6, x });
+}
+for (let x = X0; x < X1; x += .7 + r() * .9) extra(x, -3 - r() * 2.6, 1.5 + r() * .3, r() < .3);
+// falling petals
+const fallN = 380, fall = new THREE.InstancedMesh(new THREE.CircleGeometry(.04, 6), new THREE.MeshLambertMaterial({ color: 0xf8cdd9, emissive: 0x7a5560, side: THREE.DoubleSide }), fallN);
+const fd = Array.from({ length: fallN }, () => ({ x: X0 + r() * LEN, y: r(), z: -5 + r() * 9, v: .5 + r() * .5, w: .8 + r() * 1.6, ph: r() * 6.3, rs: 1 + r() * 3 }));
+scene.add(fall);
+const fo = new THREE.Object3D();
+function updatePetals(t) { fd.forEach((q, i) => { fo.position.set(q.x + Math.sin(t * q.w + q.ph) * .4 - .6 * t, 5 - ((q.y * 5 + q.v * t) % 5), q.z + Math.cos(t * q.w * .7 + q.ph) * .3); fo.rotation.set(t * q.rs + q.ph, t * q.rs * .6, q.ph); fo.updateMatrix(); fall.setMatrixAt(i, fo.matrix); }); fall.instanceMatrix.needsUpdate = true; }
+
+// ---------- child rig (faces +z) ----------
+const PARTS = [
+  { key: 'hair', label: '머리', color: '#2a2224' },
+  { key: 'skin', label: '피부', color: '#f1d3bd' },
+  { key: 'top', label: '상의', color: '#f3ede6' },
+  { key: 'bottom', label: '하의', color: '#7f93b5' },
+  { key: 'shoes', label: '신발', color: '#f0eeea' },
+  { key: 'accent', label: '포인트', color: '#f2a9bf' }
+];
+const PM = {}; PARTS.forEach(p => PM[p.key] = new THREE.MeshLambertMaterial({ color: p.color }));
+function cm(geo, mat) { const m = mesh(geo, mat); m.userData.isChar = true; return m; }
+const cap = (rd, l, mat) => cm(new THREE.CapsuleGeometry(rd, l, 4, 10), mat);
+const kid = (() => {
+  const g = new THREE.Group(), hips = new THREE.Group(), spine = new THREE.Group(); g.add(hips); hips.add(spine);
+  hips.position.y = .8;
+  const pelvis = cap(.13, .08, PM.bottom); pelvis.rotation.z = Math.PI / 2; pelvis.scale.set(1, 1, .75); hips.add(pelvis);
+  const torso = cap(.14, .26, PM.top); torso.position.y = .25; torso.scale.z = .72; spine.add(torso);
+  const neck = cap(.04, .05, PM.skin); neck.position.y = .48; spine.add(neck);
+  const head = cm(new THREE.SphereGeometry(.12, 18, 14), PM.skin); head.position.y = .63; spine.add(head);
+  const hairCap = cm(new THREE.SphereGeometry(.13, 18, 12, 0, Math.PI * 2, 0, Math.PI * .58), PM.hair); hairCap.position.set(0, .645, -.01); spine.add(hairCap);
+  const clip = cm(new THREE.SphereGeometry(.03, 8, 6), PM.accent); clip.position.set(.1, .72, .04); spine.add(clip);
+  const legs = [], arms = [];
+  for (const side of [-1, 1]) {
+    const hip = new THREE.Group(); hip.position.set(side * .085, 0, 0); hips.add(hip);
+    const shorts = cap(.075, .14, PM.bottom); shorts.position.y = -.1; hip.add(shorts);
+    const thigh = cap(.06, .2, PM.skin); thigh.position.y = -.24; hip.add(thigh);
+    const knee = new THREE.Group(); knee.position.y = -.38; hip.add(knee);
+    const shin = cap(.05, .28, PM.skin); shin.position.y = -.2; knee.add(shin);
+    const foot = cm(new THREE.BoxGeometry(.09, .07, .2), PM.shoes); foot.position.set(0, -.39, .04); knee.add(foot);
+    legs.push({ hip, knee });
+    const sh = new THREE.Group(); sh.position.set(side * .19, .41, 0); spine.add(sh);
+    const sleeve = cap(.055, .08, PM.top); sleeve.position.y = -.06; sh.add(sleeve);
+    const upper = cap(.04, .16, PM.skin); upper.position.y = -.15; sh.add(upper);
+    const elbow = new THREE.Group(); elbow.position.y = -.26; sh.add(elbow);
+    const fore = cap(.036, .16, PM.skin); fore.position.y = -.12; elbow.add(fore);
+    const hand = cm(new THREE.SphereGeometry(.045, 10, 8), PM.skin); hand.position.y = -.25; elbow.add(hand);
+    arms.push({ sh, elbow });
+  }
+  scene.add(g);
+  return { g, hips, spine, legs, arms };
+})();
+let kidScale = 1;
+function setHeight(h) { kidScale = h / 1.45; kid.g.scale.setScalar(kidScale); }
+// joyful run with "airplane" arms, like the board
+function poseKid(ph, armsOut) {
+  const s = Math.sin(ph), c = Math.cos(ph);
+  kid.legs.forEach((l, i) => { const k = i ? -1 : 1; l.hip.rotation.x = -k * s * 1.0; l.knee.rotation.x = .3 + 1.1 * Math.max(0, k * c); });
+  kid.arms.forEach((a, i) => {
+    const side = i ? 1 : -1, sw = (i ? -s : s);
+    const flap = Math.sin(ph * .5 + i) * .12;
+    a.sh.rotation.x = lerp(sw * .9, (i ? -1.45 : 1.3) + flap, armsOut);
+    a.sh.rotation.z = side * lerp(.12, .35, armsOut);
+    a.elbow.rotation.x = lerp(-1.3, -.1, armsOut);
+  });
+  kid.spine.rotation.x = .22; kid.spine.rotation.z = Math.sin(ph) * .06 * armsOut;
+  kid.hips.position.y = .8 + Math.abs(c) * .09;
+}
+
+// ---------- performance ----------
+// camera trucks right at 3.0 m/s; the child enters from frame left, runs level with it, then pulls ahead
+const CAM_V = 3.0, CAM_Z = 4.3;
+const kidRel = track([[0, -2.2], [1.1, -.45], [2.5, -.05], [4.0, .12], [5.0, .95]]);
+const armsKey = track([[0, .2], [1.0, .3], [1.6, 1], [5, 1]]);
+const kidX = t => CAM_V * t + kidRel(t)[0];
+const PH_RATE = 240, phaseTable = new Float32Array(Math.ceil(DUR * PH_RATE) + 2);
+(() => { let ph = 0; for (let i = 1; i < phaseTable.length; i++) { const t = i / PH_RATE, v = (kidX(t) - kidX(t - 1 / PH_RATE)) * PH_RATE; ph += 3.1 * Math.max(2, v) / PH_RATE; phaseTable[i] = ph; } })();
+const phaseAt = t => { const f = clamp(t * PH_RATE, 0, phaseTable.length - 2), i = Math.floor(f); return lerp(phaseTable[i], phaseTable[i + 1], f - i); };
+
+const BEATS = [
+  { t0: 0, t1: 1.2, name: '프레임 인', en: 'Side-on tracking shot along the Gyeonghwa Station railway, packed with cherry blossoms during the Jinhae Gunhangje festival. The child bursts into frame from the left, running along the track between the rails.', ko: '진해군항제 경화역 철길. 카메라가 옆에서 오른쪽으로 트래킹하는 가운데, 아이가 화면 왼쪽에서 철길 위로 뛰어 들어온다.' },
+  { t0: 1.2, t1: 4.0, name: '나란히 질주', en: 'The camera keeps pace beside the child, who runs over the sleepers with both arms spread wide like wings, laughing; the blossom tunnel and festival crowd behind the fence streak past in motion blur while petals swirl.', ko: '아이가 두 팔을 날개처럼 벌리고 침목 위를 달린다. 카메라는 같은 속도로 나란히. 뒤쪽 펜스 너머 인파와 벚꽃 터널이 모션블러로 흘러가고 꽃잎이 흩날린다.' },
+  { t0: 4.0, t1: 5.0, name: '앞질러 나감', en: 'The child pulls slightly ahead toward frame right; hold the tracking speed.', ko: '아이가 조금씩 앞서 나가 화면 오른쪽으로 치우친다. 카메라 속도는 그대로 유지.' }
+];
+
+// ---------- passes + motion blur ----------
+const depthMat = new THREE.ShaderMaterial({
+  uniforms: { uNear: { value: .5 }, uFar: { value: 30 } }, side: THREE.DoubleSide,
+  vertexShader: 'varying float vD;\n#include <common>\nvoid main(){\n#include <begin_vertex>\n#include <project_vertex>\nvD = -mvPosition.z; }',
+  fragmentShader: 'uniform float uNear; uniform float uFar; varying float vD; void main(){ float d = clamp((vD - uNear) / (uFar - uNear), 0.0, 1.0); gl_FragColor = vec4(vec3(1.0 - pow(d, 0.55)), 1.0); }'
+});
+const WHITE = new THREE.MeshBasicMaterial({ color: 0xffffff }), BLACK = new THREE.MeshBasicMaterial({ color: 0x000000 });
+const allMeshes = []; scene.traverse(o => { if (o.isMesh) { o.userData.mat = o.material; allMeshes.push(o); } });
+let pass = 'shaded', blur = true;
+function setPass(p) {
+  pass = p;
+  scene.overrideMaterial = p === 'depth' ? depthMat : null;
+  allMeshes.forEach(m => { m.material = p === 'mask' ? (m.userData.isChar ? WHITE : BLACK) : m.userData.mat; });
+  scene.background = p === 'shaded' ? SKY : new THREE.Color(0x000000);
+  scene.fog = p === 'shaded' ? FOG() : null;
+  document.getElementById('hudPass').textContent = { shaded: 'SHADED', depth: 'DEPTH', mask: 'MASK' }[p];
+  document.querySelectorAll('[data-pass]').forEach(b => b.setAttribute('aria-pressed', b.dataset.pass === p));
+}
+const rtScene = new THREE.WebGLRenderTarget(4, 4, { samples: 4 });
+const rtAcc = new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType });
+const qCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+const accMat = new THREE.MeshBasicMaterial({ transparent: true, blending: THREE.AdditiveBlending, depthTest: false, depthWrite: false });
+const accScene = new THREE.Scene(); accScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), accMat));
+const outScene = new THREE.Scene(); outScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.MeshBasicMaterial({ map: rtAcc.texture, depthTest: false, depthWrite: false })));
+
+// kidT: the child is always posed at the frame's centre time and carried with the camera, so only the world blurs
+function evaluate(t, kidT = t) {
+  kid.g.position.set(kidX(kidT) + CAM_V * (t - kidT), RUN_Y, 0); kid.g.rotation.y = Math.PI / 2 + .3;
+  poseKid(phaseAt(kidT), clamp(armsKey(kidT)[0], 0, 1));
+  crowd.forEach(c => { c.g.rotation.z = Math.sin(t * 1.3 + c.ph) * .02; });
+  updatePetals(t);
+  const cx = CAM_V * t, bob = Math.sin(t * 9.3) * .012 + Math.sin(t * 3.1) * .01;
+  camera.position.set(cx - .1, .9 + bob, CAM_Z); camera.lookAt(cx + .05, .74, 0);
+  followSun(cx);
+}
+function render(t) {
+  if (pass !== 'shaded' || !blur) { evaluate(t); renderer.setRenderTarget(null); renderer.render(scene, camera); return; }
+  const size = renderer.getDrawingBufferSize(new THREE.Vector2());
+  if (rtAcc.width !== size.x || rtAcc.height !== size.y) { rtScene.setSize(size.x, size.y); rtAcc.setSize(size.x, size.y); }
+  renderer.setRenderTarget(rtAcc); renderer.setClearColor(0x000000, 1); renderer.clear();
+  for (let k = 0; k < SUBFRAMES; k++) {
+    evaluate(t + (k / (SUBFRAMES - 1) - .5) * SHUTTER, t);
+    renderer.setRenderTarget(rtScene); renderer.render(scene, camera);
+    accMat.map = rtScene.texture; accMat.opacity = 1 / SUBFRAMES;
+    renderer.setRenderTarget(rtAcc); renderer.autoClear = false; renderer.render(accScene, qCam); renderer.autoClear = true;
+  }
+  renderer.setRenderTarget(null); renderer.render(outScene, qCam);
+  evaluate(t);
+}
+
+// ---------- UI ----------
+const $ = id => document.getElementById(id);
+const tl = $('tl'), ph = $('ph');
+BEATS.forEach(b => {
+  const d = document.createElement('div'); d.className = 'beat'; d.style.flex = (b.t1 - b.t0) + ' 1 0';
+  d.innerHTML = `<span>${b.name}</span><small>${b.t0.toFixed(1)}–${b.t1.toFixed(1)}s</small>`; tl.insertBefore(d, ph); b.el = d;
+  const li = document.createElement('li'); li.innerHTML = `<span class="t">${b.t0.toFixed(1)}–${b.t1.toFixed(1)}s</span><span>${b.ko}</span>`; $('beatList').appendChild(li);
+});
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+let T = reduce ? 2.5 : 0, playing = !reduce, last = performance.now(), scrub = false;
+function syncPlay() {
+  $('playIcon').innerHTML = playing ? '<path d="M3 2h4v12H3zM9 2h4v12H9z"/>' : '<path d="M4 2l10 6-10 6z"/>';
+  $('hudState').textContent = playing ? '● PLAY' : '❚❚ PAUSE';
+}
+$('bPlay').onclick = () => { playing = !playing; syncPlay(); };
+$('bStep').onclick = () => { playing = false; T = Math.min(DUR - 1e-4, (Math.round(T * FPS) + 1) / FPS); syncPlay(); };
+$('bBlur').onclick = e => { blur = !blur; e.currentTarget.setAttribute('aria-pressed', blur); };
+document.querySelectorAll('[data-pass]').forEach(b => b.onclick = () => setPass(b.dataset.pass));
+const seek = e => { const b = tl.getBoundingClientRect(); T = clamp((e.clientX - b.left) / b.width, 0, 1) * (DUR - 1e-4); };
+tl.addEventListener('pointerdown', e => { scrub = true; tl.setPointerCapture(e.pointerId); seek(e); });
+tl.addEventListener('pointermove', e => scrub && seek(e));
+tl.addEventListener('pointerup', () => scrub = false);
+tl.addEventListener('keydown', e => { if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); playing = false; syncPlay(); T = clamp(T + (e.key === 'ArrowRight' ? 1 : -1) / FPS, 0, DUR - 1e-4); } });
+addEventListener('keydown', e => { if (e.target.closest && e.target.closest('input,textarea,[role=slider]')) return; if (e.code === 'Space') { e.preventDefault(); $('bPlay').click(); } });
+
+// character sheet
+const store = { get(k) { try { return JSON.parse(localStorage.getItem('jinhae-s16:' + k)); } catch (_) { return null; } }, set(k, v) { try { localStorage.setItem('jinhae-s16:' + k, JSON.stringify(v)); } catch (_) {} } };
+let activePart = 'top';
+const saved = store.get('colors') || {};
+PARTS.forEach(p => {
+  if (saved[p.key]) PM[p.key].color.set(saved[p.key]);
+  const b = document.createElement('button'); b.className = 'part'; b.type = 'button'; b.id = 'part-' + p.key;
+  b.innerHTML = `<i></i><span>${p.label}</span>`; b.onclick = () => { activePart = p.key; syncParts(); };
+  $('parts').appendChild(b); p.btn = b;
+});
+function syncParts() { PARTS.forEach(p => { p.btn.querySelector('i').style.background = '#' + PM[p.key].color.getHexString(); p.btn.setAttribute('aria-pressed', p.key === activePart); }); }
+syncParts();
+const sc = $('sheetCanvas'), sctx = sc.getContext('2d', { willReadFrequently: true });
+function loadSheet(file) {
+  if (!file || !file.type.startsWith('image/')) return;
+  const img = new Image(); img.onload = () => {
+    const s = Math.min(1, 900 / img.width); sc.width = img.width * s; sc.height = img.height * s;
+    sctx.drawImage(img, 0, 0, sc.width, sc.height); sc.hidden = false; $('sheetEmpty').hidden = true; URL.revokeObjectURL(img.src);
+  }; img.src = URL.createObjectURL(file);
+}
+$('sheetFile').onchange = e => loadSheet(e.target.files[0]);
+const sheet = $('sheet');
+sheet.addEventListener('dragover', e => { e.preventDefault(); sheet.classList.add('drag'); });
+sheet.addEventListener('dragleave', () => sheet.classList.remove('drag'));
+sheet.addEventListener('drop', e => { e.preventDefault(); sheet.classList.remove('drag'); loadSheet(e.dataTransfer.files[0]); });
+sc.addEventListener('click', e => {
+  const b = sc.getBoundingClientRect(), x = Math.round((e.clientX - b.left) / b.width * sc.width), y = Math.round((e.clientY - b.top) / b.height * sc.height);
+  const d = sctx.getImageData(clamp(x - 2, 0, sc.width - 5), clamp(y - 2, 0, sc.height - 5), 5, 5).data; let R = 0, G = 0, B = 0;
+  for (let i = 0; i < d.length; i += 4) { R += d[i]; G += d[i + 1]; B += d[i + 2]; }
+  const n = d.length / 4; PM[activePart].color.setRGB(R / n / 255, G / n / 255, B / n / 255);
+  const out = {}; PARTS.forEach(p => out[p.key] = '#' + PM[p.key].color.getHexString()); store.set('colors', out);
+  const i = PARTS.findIndex(p => p.key === activePart); activePart = PARTS[(i + 1) % PARTS.length].key; syncParts();
+});
+const hIn = $('height'); hIn.value = store.get('height') || 1.15;
+const syncH = () => { setHeight(+hIn.value); $('hVal').textContent = (+hIn.value).toFixed(2) + ' m'; store.set('height', +hIn.value); };
+hIn.oninput = syncH; syncH();
+
+// prompt pack
+const DEF_DESC = 'a cheerful child of about 6–7 with short dark hair and a small pink hair clip, a white T-shirt, light denim shorts and white sneakers';
+const DEF_STYLE = 'Warm Korean spring, full-bloom cherry blossoms at Jinhae Gunhangje festival, soft bright daylight, pastel pink and white palette, drifting petals, strong horizontal motion blur on the background, the child stays sharp.';
+$('desc').value = store.get('desc') || DEF_DESC; $('style').value = store.get('style') || DEF_STYLE;
+function buildPrompt() {
+  $('prompt').value = [
+    `CHARACTER: ${$('desc').value.trim()}. Match the attached character sheet exactly (face, hair, outfit, colors, proportions). Keep the child identical in every frame.`,
+    `SHOT S16: one continuous 5-second lateral tracking shot, 35mm lens, 24 fps, 16:9, camera at child's chest height moving left to right at running speed. Follow the previz video exactly for camera path, timing, framing and blocking. Replace the mannequin with the character; keep the railway tracks, sleepers, fence, crowd and blossom tunnel layout.`,
+    ...BEATS.map(b => `${b.t0.toFixed(1)}–${b.t1.toFixed(1)}s  ${b.en}`),
+    `STYLE: ${$('style').value.trim()}`
+  ].join('\n');
+}
+['desc', 'style'].forEach(id => $(id).addEventListener('input', () => { store.set(id, $(id).value); buildPrompt(); }));
+buildPrompt();
+$('bCopy').onclick = () => {
+  const done = m => $('copyMsg').textContent = m;
+  navigator.clipboard.writeText($('prompt').value).then(() => done('복사했습니다'), () => { $('prompt').select(); done('선택됨: Ctrl+C로 복사하세요'); });
+};
+
+// ---------- loop ----------
+function resize(w, h) { w = w || vp.clientWidth; h = h || vp.clientHeight; if (w && h) renderer.setSize(w, h, false); }
+new ResizeObserver(() => !window.__offline && resize()).observe(vp); resize();
+function draw() {
+  render(T);
+  const f = Math.min(FRAMES - 1, Math.floor(T * FPS));
+  $('hudTc').textContent = `00:00:${String(Math.floor(f / FPS)).padStart(2, '0')}:${String(f % FPS).padStart(2, '0')}`;
+  $('tc').textContent = `f ${String(f).padStart(3, '0')} / ${FRAMES}`;
+  ph.style.left = (T / DUR * 100) + '%'; tl.setAttribute('aria-valuenow', T.toFixed(2));
+  const b = BEATS.find(x => T >= x.t0 && T < x.t1) || BEATS[BEATS.length - 1];
+  BEATS.forEach(x => x.el.classList.toggle('active', x === b)); $('hudBeat').textContent = b.name + ' · ' + b.t0.toFixed(1) + '–' + b.t1.toFixed(1) + 's';
+}
+function frame(now) {
+  const dt = Math.min(.1, (now - last) / 1000); last = now;
+  if (playing && !scrub) T = (T + dt) % DUR;
+  if (!window.__offline) draw();
+  requestAnimationFrame(frame);
+}
+syncPlay(); setPass('shaded'); requestAnimationFrame(frame);
+
+// hook for offline frame export
+window.__previz = { FRAMES, FPS, setPass, setBlur(b) { blur = b; }, renderFrame(f, w, h) { window.__offline = true; renderer.setPixelRatio(1); resize(w, h); T = f / FPS; render(T); return canvas.toDataURL('image/jpeg', .92); } };
+})();
+</script>
