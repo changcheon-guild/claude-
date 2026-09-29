@@ -1,0 +1,567 @@
+<title>신사 나무타기 프리비즈</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap">
+<style>
+/* Layout: edit-bay monitor. Viewer + pass switch + beat timeline on the left, character sheet + prompt pack on the right; stacks on narrow screens. */
+:root {
+  --bg: #141316;
+  --panel: #1d1b20;
+  --line: #322f36;
+  --fg: #eeeaf0;
+  --muted: #9c95a0;
+  --accent: #ef6a3a;
+  --accent-soft: #3a2420;
+  --font-body: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  color-scheme: dark;
+}
+html, body { background: var(--bg); color: var(--fg); }
+body { font-family: var(--font-body); font-size: 15px; line-height: 1.55; }
+.wrap { max-width: 1320px; margin: 0 auto; padding-inline: 16px; padding-block: 24px 48px; display: grid; gap: 20px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 24px; }
+h1 { margin: 0; font-size: 26px; font-weight: 600; text-wrap: balance; }
+h2 { margin: 0; font-size: 13px; font-family: var(--font-mono); font-weight: 500; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.meta { font-family: var(--font-mono); font-size: 12px; letter-spacing: .08em; color: var(--muted); text-transform: uppercase; }
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 20px; align-items: start; }
+@media (max-width: 1000px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+.col { display: grid; gap: 10px; min-width: 0; }
+
+.viewport { position: relative; width: 100%; max-width: 100%; aspect-ratio: 16 / 9; background: #000; border: 1px solid var(--line); overflow: hidden; }
+.viewport canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.pip { position: absolute; right: 2%; bottom: 12%; width: 32%; border: 1px solid rgba(255,255,255,.5); background: #000; }
+.pip video { display: block; width: 100%; }
+.pip span { position: absolute; left: 6px; top: 4px; font: 500 10px var(--font-mono); letter-spacing: .08em; color: #fff; text-shadow: 0 1px 2px #000; }
+.hud { position: absolute; inset: 0; pointer-events: none; font-family: var(--font-mono); font-size: clamp(10px, 1.3vw, 13px); letter-spacing: .06em; color: #fff; }
+.hud > div { position: absolute; display: flex; gap: 10px; align-items: center; text-shadow: 0 1px 2px rgba(0,0,0,.6); }
+.hud-tl { top: 3%; left: 2.5%; } .hud-tr { top: 3%; right: 2.5%; } .hud-bl { bottom: 3.5%; left: 2.5%; right: 2.5%; justify-content: center; }
+.badge { background: #fff; color: #111; font-weight: 500; padding: 1px 7px; text-shadow: none; }
+.spec { background: rgba(10,8,10,.55); padding: 3px 10px; }
+.state { color: var(--accent); }
+
+.row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.row .spacer { flex: 1; }
+button, .file-btn { font: inherit; color: var(--fg); background: var(--panel); border: 1px solid var(--line); height: 34px; min-width: 34px; padding: 0 10px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; border-radius: 2px; }
+button:hover, .file-btn:hover { border-color: var(--muted); }
+button:focus-visible, .file-btn:focus-within, textarea:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+button svg { width: 14px; height: 14px; fill: currentColor; }
+.mono { font-family: var(--font-mono); font-size: 12px; letter-spacing: .06em; }
+.tc { font-family: var(--font-mono); font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.seg-group { display: inline-flex; }
+.seg-group button { border-radius: 0; margin-left: -1px; }
+.seg-group button:first-child { border-radius: 2px 0 0 2px; margin-left: 0; }
+.seg-group button:last-child { border-radius: 0 2px 2px 0; }
+
+.timeline { position: relative; display: flex; height: 44px; border: 1px solid var(--line); background: var(--panel); cursor: pointer; touch-action: none; user-select: none; }
+.beat { position: relative; display: flex; flex-direction: column; justify-content: center; padding-left: 8px; border-right: 1px solid var(--line); font-size: 12px; color: var(--muted); overflow: hidden; white-space: nowrap; min-width: 0; line-height: 1.3; }
+.beat:last-of-type { border-right: 0; }
+.beat small { font-family: var(--font-mono); font-size: 10.5px; }
+.beat.active { color: var(--fg); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.playhead { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; background: var(--accent); pointer-events: none; }
+.playhead::before { content: ""; position: absolute; top: 0; left: -4px; border: 5px solid transparent; border-top-color: var(--accent); }
+
+.panel { border: 1px solid var(--line); background: var(--panel); padding: 14px; display: grid; gap: 12px; min-width: 0; }
+.sheet { position: relative; border: 1px dashed var(--line); min-height: 150px; display: grid; place-items: center; text-align: center; color: var(--muted); font-size: 13px; padding: 10px; }
+.sheet.drag { border-color: var(--accent); color: var(--fg); }
+.sheet canvas { max-width: 100%; display: block; cursor: crosshair; }
+.hint { font-size: 12.5px; color: var(--muted); line-height: 1.5; }
+.parts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.part { height: auto; padding: 6px; display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 6px; align-items: center; text-align: left; font-size: 12.5px; }
+.part i { width: 18px; height: 18px; border: 1px solid rgba(255,255,255,.25); display: block; }
+.part[aria-pressed="true"] { background: var(--accent-soft); }
+label.fld { display: grid; gap: 4px; font-size: 12.5px; color: var(--muted); }
+textarea { font: 13px/1.5 var(--font-body); color: var(--fg); background: var(--bg); border: 1px solid var(--line); padding: 8px; resize: vertical; min-height: 64px; width: 100%; box-sizing: border-box; }
+textarea.prompt { font-family: var(--font-mono); font-size: 11.5px; min-height: 220px; }
+input[type=range] { width: 100%; accent-color: var(--accent); }
+.beats-list { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--line); }
+.beats-list li { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+.beats-list .t { font-family: var(--font-mono); font-size: 12px; color: var(--muted); padding-top: 2px; font-variant-numeric: tabular-nums; }
+.files { display: grid; gap: 4px; font-family: var(--font-mono); font-size: 12px; }
+.files div { display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px solid var(--line); padding: 4px 0; }
+.files span:last-child { color: var(--muted); text-align: right; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>신사 계단 · 나무타기 프리비즈</h1>
+    <div class="meta">One take · 9.5 sec · 228 frames · 24 fps · 24mm follow</div>
+  </header>
+
+  <div class="layout">
+    <section class="col" aria-label="프리비즈 뷰어">
+      <div class="viewport" id="vp">
+        <canvas id="c"></canvas>
+        <div class="pip" id="pip" hidden><video id="ref" src="reference.mp4" muted playsinline preload="auto"></video><span>REF</span></div>
+        <div class="hud" aria-hidden="true">
+          <div class="hud-tl"><span class="badge" id="hudPass">SHADED</span><span>24MM</span></div>
+          <div class="hud-tr"><span class="state" id="hudState">● PLAY</span><span id="hudTc">00:00:00:00</span></div>
+          <div class="hud-bl"><span class="spec" id="hudBeat"></span></div>
+        </div>
+      </div>
+
+      <div class="row">
+        <button id="bPlay" aria-label="재생/일시정지"><svg viewBox="0 0 16 16" id="playIcon"><path d="M4 2l10 6-10 6z"/></svg></button>
+        <button id="bStep" aria-label="한 프레임 앞으로"><svg viewBox="0 0 16 16"><path d="M11 2h2v12h-2zM2 2v12l8-6z"/></svg></button>
+        <span class="tc" id="tc">f 000 / 228</span>
+        <span class="spacer"></span>
+        <div class="seg-group" role="group" aria-label="렌더 패스">
+          <button data-pass="shaded" aria-pressed="true"><span class="mono">셰이딩</span></button>
+          <button data-pass="depth" aria-pressed="false"><span class="mono">뎁스</span></button>
+          <button data-pass="mask" aria-pressed="false"><span class="mono">마스크</span></button>
+        </div>
+        <button id="bRef" aria-pressed="false"><span class="mono">레퍼런스 PIP</span></button>
+      </div>
+
+      <div class="timeline" id="tl" role="slider" aria-label="타임라인" aria-valuemin="0" aria-valuemax="9.5" aria-valuenow="0" tabindex="0">
+        <div class="playhead" id="ph"></div>
+      </div>
+
+      <div class="panel">
+        <h2>비트 (레퍼런스 영상 기준 타이밍)</h2>
+        <ul class="beats-list" id="beatList"></ul>
+      </div>
+    </section>
+
+    <aside class="col" aria-label="캐릭터 시트와 생성 패키지">
+      <div class="panel">
+        <h2>캐릭터 시트</h2>
+        <div class="sheet" id="sheet">
+          <div id="sheetEmpty">이미지를 여기로 끌어오거나<br><label class="file-btn" style="margin-top:8px">파일 선택<input type="file" id="sheetFile" accept="image/*" class="sr"></label></div>
+          <canvas id="sheetCanvas" hidden></canvas>
+        </div>
+        <p class="hint">파츠를 고른 뒤 시트 이미지를 클릭하면 그 색이 프리비즈 캐릭터에 바로 입혀집니다. 기본값은 레퍼런스 영상의 의상 색입니다.</p>
+        <div class="parts" id="parts"></div>
+        <label class="fld">키 <span id="hVal" class="mono"></span><input type="range" id="height" min="1.25" max="1.75" step="0.01" value="1.45"></label>
+      </div>
+
+      <div class="panel">
+        <h2>생성 프롬프트</h2>
+        <label class="fld">캐릭터 설명 (시트 내용으로 바꾸세요)<textarea id="desc"></textarea></label>
+        <label class="fld">스타일<textarea id="style"></textarea></label>
+        <label class="fld">최종 프롬프트<textarea id="prompt" class="prompt" readonly></textarea></label>
+        <div class="row"><button id="bCopy"><span class="mono">프롬프트 복사</span></button><span class="hint" id="copyMsg"></span></div>
+      </div>
+
+      <div class="panel">
+        <h2>생성 패키지 (저장소 previz/out/)</h2>
+        <div class="files">
+          <div><span>previz_shaded.mp4</span><span>카메라·동선 기준</span></div>
+          <div><span>previz_depth.mp4</span><span>뎁스 컨트롤</span></div>
+          <div><span>previz_mask.mp4</span><span>캐릭터 마스크</span></div>
+          <div><span>compare.mp4</span><span>레퍼런스 대조</span></div>
+          <div><span>reference_landscape.mp4</span><span>원본 가로 회전</span></div>
+        </div>
+        <p class="hint">비디오 투 비디오 툴에 previz 영상(또는 뎁스)을 모션 소스로, 캐릭터 시트를 이미지 레퍼런스로 넣고 위 프롬프트를 붙이면 됩니다.</p>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js"></script>
+<script>
+(() => {
+'use strict';
+const V = (x, y, z) => new THREE.Vector3(x, y, z);
+const UP = V(0, 1, 0);
+const lerp = (a, b, t) => a + (b - a) * t;
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const rng = seed => () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+const DUR = 9.5, FPS = 24, FRAMES = Math.round(DUR * FPS);
+
+// Catmull-Rom through keyed values: keys = [[t, v0, v1, ...], ...]
+function track(keys) {
+  const n = keys.length;
+  return t => {
+    if (t <= keys[0][0]) return keys[0].slice(1);
+    if (t >= keys[n - 1][0]) return keys[n - 1].slice(1);
+    let i = 0; while (keys[i + 1][0] < t) i++;
+    const p0 = keys[Math.max(i - 1, 0)], p1 = keys[i], p2 = keys[i + 1], p3 = keys[Math.min(i + 2, n - 1)];
+    const u = (t - p1[0]) / (p2[0] - p1[0]), u2 = u * u, u3 = u2 * u;
+    return p1.slice(1).map((_, k) => { const a = p0[k + 1], b = p1[k + 1], c = p2[k + 1], d = p3[k + 1];
+      return .5 * (2 * b + (-a + c) * u + (2 * a - 5 * b + 4 * c - d) * u2 + (-a + 3 * b - 3 * c + d) * u3); });
+  };
+}
+
+const matCache = {};
+const M = (c, o = {}) => { const k = c + JSON.stringify(o); return matCache[k] || (matCache[k] = new THREE.MeshLambertMaterial(Object.assign({ color: c }, o))); };
+function mesh(geo, mat, cast = true, recv = true) { const m = new THREE.Mesh(geo, mat); m.castShadow = cast; m.receiveShadow = recv; return m; }
+function box(p, w, h, d, c, x, y, z) { const m = mesh(new THREE.BoxGeometry(w, h, d), typeof c === 'string' ? M(c) : c); m.position.set(x, y, z); p.add(m); return m; }
+function cyl(p, rt, rb, h, c, x, y, z, seg = 12) { const m = mesh(new THREE.CylinderGeometry(rt, rb, h, seg), typeof c === 'string' ? M(c) : c); m.position.set(x, y, z); p.add(m); return m; }
+function rod(p, a, b, r1, r2, mat, seg = 8) {
+  const dir = V(0, 0, 0).subVectors(b, a), len = dir.length();
+  const m = mesh(new THREE.CylinderGeometry(r2, r1, len, seg), typeof mat === 'string' ? M(mat) : mat);
+  m.position.copy(a).addScaledVector(dir, .5); m.quaternion.setFromUnitVectors(UP, dir.normalize()); p.add(m); return m;
+}
+class Blobs {
+  constructor() { this.items = []; }
+  add(x, y, z, r, c) { this.items.push([x, y, z, r, c]); }
+  build(p) {
+    const im = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true }), this.items.length);
+    const o = new THREE.Object3D(), col = new THREE.Color();
+    this.items.forEach((it, i) => { o.position.set(it[0], it[1], it[2]); o.scale.set(it[3], it[3] * .8, it[3]); o.rotation.set(i * 1.3, i * .7, 0); o.updateMatrix(); im.setMatrixAt(i, o.matrix); im.setColorAt(i, col.set(it[4])); });
+    im.castShadow = im.receiveShadow = true; p.add(im); return im;
+  }
+}
+
+// ---------- renderer ----------
+const canvas = document.getElementById('c'), vp = document.getElementById('vp');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+const scene = new THREE.Scene();
+const SKY = new THREE.Color('#9ccdee');
+scene.background = SKY; scene.fog = new THREE.Fog(0xcfe3ef, 30, 90);
+const camera = new THREE.PerspectiveCamera(40, 16 / 9, .1, 400); camera.filmGauge = 24.89; camera.setFocalLength(24);
+scene.add(new THREE.HemisphereLight(0xeaf4ff, 0xb3a58f, .7));
+const sun = new THREE.DirectionalLight(0xfff4e0, .95); sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048); sun.shadow.bias = -.0006;
+sun.position.set(-10, 20, 4); sun.target.position.set(0, 3, -12);
+Object.assign(sun.shadow.camera, { left: -22, right: 22, top: 22, bottom: -22, near: 1, far: 60 }); sun.shadow.camera.updateProjectionMatrix();
+scene.add(sun, sun.target);
+
+// ---------- set ----------
+const STEPS = 16, RISE = .18, RUN = .35, TOP = STEPS * RISE, STAIR_L = STEPS * RUN; // 2.88m up over 5.6m
+const groundY = z => z >= 0 ? 0 : z > -STAIR_L ? (-z / STAIR_L) * TOP : TOP;
+const r = rng(7);
+const STONE = ['#b1aca3', '#a7a299', '#bbb6ad'];
+// lower landing + stairs
+box(scene, 14, .2, 12, '#b9b4ab', 0, -.1, 6);
+for (let i = 0; i < STEPS; i++) box(scene, 4.6, (i + 1) * RISE, RUN, STONE[i % 3], 0, (i + 1) * RISE / 2, -(i + .5) * RUN);
+// stone balustrades following the slope
+const slope = Math.atan2(TOP, STAIR_L), slopeLen = Math.hypot(TOP, STAIR_L);
+[-2.55, 2.55].forEach(x => {
+  const w = box(scene, .4, 1.1, slopeLen + .6, '#9f9a92', x, TOP / 2 + .55, -STAIR_L / 2); w.rotation.x = slope;
+  box(scene, .5, 1.6, .5, '#9a958d', x, .8, .5); box(scene, .5, 1.6, .5, '#9a958d', x, TOP + .8, -STAIR_L - .2);
+});
+// metal handrail
+rod(scene, V(-1.25, .95, .6), V(-1.25, TOP + .95, -STAIR_L - .2), .03, .03, '#4d5256');
+for (let k = 0; k <= 4; k++) { const z = .4 - k * (STAIR_L + .4) / 4; rod(scene, V(-1.25, groundY(z), z), V(-1.25, groundY(z) + .95, z), .025, .025, '#4d5256'); }
+// upper plaza
+box(scene, 60, .2, 60, '#e4ddd0', 0, TOP - .1, -STAIR_L - 30);
+// torii
+const RED = M('#d4452a'), BLK = M('#2c2a2a');
+[-1.95, 1.95].forEach(x => { cyl(scene, .2, .24, 4.4, RED, x, TOP + 2.2, -7); cyl(scene, .28, .3, .35, BLK, x, TOP + .17, -7); });
+box(scene, 5.6, .32, .5, RED, 0, TOP + 4.35, -7); box(scene, 6, .18, .6, BLK, 0, TOP + 4.6, -7);
+box(scene, 4.8, .22, .3, RED, 0, TOP + 3.55, -7); box(scene, .3, .8, .25, RED, 0, TOP + 3.95, -7);
+// stone lanterns
+function lantern(x, z) {
+  const y = TOP; cyl(scene, .45, .5, .25, '#a39e95', x, y + .12, z, 6); cyl(scene, .12, .15, 1, '#a39e95', x, y + .75, z, 8);
+  box(scene, .6, .15, .6, '#a39e95', x, y + 1.3, z); box(scene, .45, .45, .45, '#9d988f', x, y + 1.6, z);
+  const roof = mesh(new THREE.ConeGeometry(.6, .45, 4), M('#96918a')); roof.position.set(x, y + 2.05, z); roof.rotation.y = Math.PI / 4; scene.add(roof);
+}
+lantern(-3.1, -8.6); lantern(3.1, -8.6);
+// shrine hall
+(() => {
+  const g = new THREE.Group(); g.position.set(10.5, TOP, -15); g.rotation.y = -.35; scene.add(g);
+  box(g, 8, .6, 7, '#b0aba3', 0, .3, 0); box(g, 7, 2.6, 6, '#8a6a4b', 0, 1.9, 0);
+  for (let x = -3.3; x <= 3.3; x += 1.1) box(g, .15, 2.6, .15, '#5d4533', x, 1.9, 3.05);
+  const roof = mesh(new THREE.CylinderGeometry(3.4, 3.4, 9, 3, 1), M('#4c5357')); roof.rotation.z = Math.PI / 2; roof.scale.set(1, 1, .9); roof.position.set(0, 4.4, 0); g.add(roof);
+})();
+// low stone fence around the courtyard
+(() => {
+  const list = []; for (let x = -14; x <= 14; x += 1.2) list.push([x, -33]); for (let z = -8; z > -33; z -= 1.2) { list.push([-12, z]); }
+  const im = new THREE.InstancedMesh(new THREE.BoxGeometry(.25, 1, .25), M('#aaa59c'), list.length), o = new THREE.Object3D();
+  list.forEach((q, i) => { o.position.set(q[0], TOP + .5, q[1]); o.updateMatrix(); im.setMatrixAt(i, o.matrix); }); im.castShadow = im.receiveShadow = true; scene.add(im);
+  box(scene, 28, .15, .3, '#aaa59c', 0, TOP + .95, -33); box(scene, .3, .15, 25, '#aaa59c', -12, TOP + .95, -20.5);
+})();
+// cedars behind, green trees by the stairs
+const blobs = new Blobs();
+const GREEN = ['#2f6b3a', '#3d7d44', '#2a5c34', '#4a8a4a'];
+for (let i = 0; i < 34; i++) {
+  const x = lerp(-30, 30, r()), z = -36 - r() * 18, h = 7 + r() * 6;
+  cyl(scene, .25, .35, 2, '#5b4636', x, TOP + 1, z, 6);
+  for (let k = 0; k < 3; k++) { const c = mesh(new THREE.ConeGeometry(2.4 - k * .6, h * .45, 9), M(GREEN[(i + k) % 4])); c.position.set(x, TOP + 2 + k * h * .22 + h * .2, z); scene.add(c); }
+}
+[[-5.5, 1.5], [-5, -3.5], [5.5, 1], [5.2, -4]].forEach(([x, z]) => {
+  rod(scene, V(x, groundY(z) - .5, z), V(x, groundY(z) + 4, z), .3, .2, '#5b4636');
+  for (let k = 0; k < 16; k++) blobs.add(x + (r() - .5) * 5 - Math.sign(x) * 1.2, groundY(z) + 4.5 + r() * 2.5, z + (r() - .5) * 5, .9 + r() * .8, GREEN[(r() * 4) | 0]);
+});
+// the big maple on its stone platform
+const TREE = V(0, TOP, -22), PLAT_H = .7, PT = TOP + PLAT_H;
+box(scene, 3.6, PLAT_H, 3.6, '#bdb8af', 0, TOP + PLAT_H / 2, -22);
+box(scene, 3.9, .12, 3.9, '#aaa59c', 0, PT + .06, -22).scale.set(1, 1, 1);
+[-1.4, 1.4].forEach(x => { box(scene, .3, .8, .22, '#a8a39a', x, PT + .4, -20.6); });
+const BARK = M('#4d3a2e');
+cyl(scene, .62, .8, 3.8, BARK, 0, PT + 1.9, -22, 12);
+rod(scene, V(-.2, PT + 2.9, -21.9), V(-3.4, PT + 5.1, -21.3), .42, .22, BARK);
+rod(scene, V(.25, PT + 3.2, -22), V(3.3, PT + 4.9, -22.3), .38, .2, BARK);
+rod(scene, V(0, PT + 3.6, -22.1), V(.5, PT + 7, -23.2), .45, .25, BARK);
+rod(scene, V(-2.2, PT + 4.4, -21.5), V(-4.2, PT + 6.3, -20.6), .18, .08, BARK);
+rod(scene, V(2.2, PT + 4.4, -22.2), V(4.6, PT + 6.4, -21.4), .16, .08, BARK);
+const MAPLE = ['#e8622a', '#f08a2c', '#f4b23a', '#d8432a', '#f29d38', '#e5752c'];
+for (let k = 0; k < 90; k++) {
+  const a = r() * Math.PI * 2, rr = Math.sqrt(r());
+  blobs.add(Math.cos(a) * rr * 6.2, PT + 6.2 + (r() - .3) * 3.2, -22.4 + Math.sin(a) * rr * 4.2, .9 + r() * .9, MAPLE[(r() * 6) | 0]);
+}
+blobs.build(scene);
+// fallen leaves
+(() => {
+  const n = 900, im = new THREE.InstancedMesh(new THREE.CircleGeometry(.07, 5), new THREE.MeshLambertMaterial({ color: 0xffffff, side: THREE.DoubleSide }), n), o = new THREE.Object3D(), c = new THREE.Color();
+  for (let i = 0; i < n; i++) {
+    const near = i < 600, x = near ? (r() - .5) * 9 : (r() - .5) * 26, z = near ? -22 + (r() - .5) * 9 : -8 - r() * 24;
+    o.position.set(x, TOP + .01, z); o.rotation.set(-Math.PI / 2, 0, r() * 6); o.updateMatrix(); im.setMatrixAt(i, o.matrix); im.setColorAt(i, c.set(MAPLE[(r() * 6) | 0]));
+  }
+  im.receiveShadow = true; scene.add(im);
+})();
+
+// ---------- character rig (faces +z) ----------
+const PARTS = [
+  { key: 'hair', label: '머리', color: '#1c1b20' },
+  { key: 'skin', label: '피부', color: '#f1d3bd' },
+  { key: 'top', label: '상의', color: '#3f6fb8' },
+  { key: 'bottom', label: '하의', color: '#cdb48a' },
+  { key: 'bag', label: '가방', color: '#22304f' },
+  { key: 'shoes', label: '신발', color: '#e9e7e4' }
+];
+const PM = {}; PARTS.forEach(p => PM[p.key] = new THREE.MeshLambertMaterial({ color: p.color }));
+const charMeshes = [];
+function cm(geo, mat) { const m = mesh(geo, mat); m.userData.isChar = true; charMeshes.push(m); return m; }
+const cap = (r, l, mat) => cm(new THREE.CapsuleGeometry(r, l, 4, 10), mat);
+function buildGirl() {
+  const g = new THREE.Group(), hips = new THREE.Group(), spine = new THREE.Group(); g.add(hips); hips.add(spine);
+  hips.position.y = .8;
+  const pelvis = cap(.13, .08, PM.bottom); pelvis.rotation.z = Math.PI / 2; pelvis.scale.set(1, 1, .75); hips.add(pelvis);
+  const torso = cap(.14, .26, PM.top); torso.position.y = .25; torso.scale.z = .72; spine.add(torso);
+  const neck = cap(.04, .05, PM.skin); neck.position.y = .48; spine.add(neck);
+  const head = cm(new THREE.SphereGeometry(.105, 18, 14), PM.skin); head.position.y = .6; head.scale.set(.95, 1.05, 1); spine.add(head);
+  const hairCap = cm(new THREE.SphereGeometry(.115, 18, 12, 0, Math.PI * 2, 0, Math.PI * .6), PM.hair); hairCap.position.set(0, .615, -.01); spine.add(hairCap);
+  const hairBack = cm(new THREE.BoxGeometry(.22, .34, .07), PM.hair); hairBack.position.set(0, .45, -.1); hairBack.rotation.x = .12; spine.add(hairBack);
+  const bag = cm(new THREE.BoxGeometry(.26, .3, .13), PM.bag); bag.position.set(0, .26, -.17); spine.add(bag);
+  const legs = [], arms = [];
+  for (const side of [-1, 1]) {
+    const hip = new THREE.Group(); hip.position.set(side * .085, 0, 0); hips.add(hip);
+    const shorts = cap(.075, .14, PM.bottom); shorts.position.y = -.1; hip.add(shorts);
+    const thigh = cap(.06, .2, PM.skin); thigh.position.y = -.24; hip.add(thigh);
+    const knee = new THREE.Group(); knee.position.y = -.38; hip.add(knee);
+    const shin = cap(.05, .28, PM.skin); shin.position.y = -.2; knee.add(shin);
+    const foot = cm(new THREE.BoxGeometry(.09, .07, .2), PM.shoes); foot.position.set(0, -.39, .04); knee.add(foot);
+    legs.push({ hip, knee });
+    const sh = new THREE.Group(); sh.position.set(side * .19, .41, 0); spine.add(sh);
+    const sleeve = cap(.055, .08, PM.top); sleeve.position.y = -.06; sh.add(sleeve);
+    const upper = cap(.04, .16, PM.skin); upper.position.y = -.15; sh.add(upper);
+    const elbow = new THREE.Group(); elbow.position.y = -.26; sh.add(elbow);
+    const fore = cap(.036, .16, PM.skin); fore.position.y = -.12; elbow.add(fore);
+    const hand = cm(new THREE.SphereGeometry(.045, 10, 8), PM.skin); hand.position.y = -.25; elbow.add(hand);
+    arms.push({ sh, elbow });
+  }
+  scene.add(g);
+  return { g, hips, spine, legs, arms };
+}
+const girl = buildGirl();
+function setHeight(h) { girl.g.scale.setScalar(h / 1.45); }
+
+// poses: run (phase) and climb (phase), blended by w
+function poseGirl(ph, w, lean) {
+  const s = Math.sin(ph), c = Math.cos(ph);
+  const L = [], R = [];
+  // run
+  const run = {
+    hip: [-s * .85, s * .85], knee: [.35 + .9 * Math.max(0, c), .35 + .9 * Math.max(0, -c)],
+    sh: [s * .9, -s * .9], shz: [-.12, .12], elb: [-1.3, -1.3], spine: lean, bob: Math.abs(c) * .06
+  };
+  const climb = {
+    hip: [-1.1 - s * .45, -1.1 + s * .45], knee: [1.5 + s * .3, 1.5 - s * .3],
+    sh: [-2.7 + s * .35, -2.7 - s * .35], shz: [-.25, .25], elb: [-.5 - Math.max(0, s) * .6, -.5 - Math.max(0, -s) * .6], spine: .18, bob: 0
+  };
+  const mix = (a, b) => lerp(a, b, w);
+  girl.legs.forEach((l, i) => { l.hip.rotation.x = mix(run.hip[i], climb.hip[i]); l.knee.rotation.x = mix(run.knee[i], climb.knee[i]); });
+  girl.arms.forEach((a, i) => { a.sh.rotation.x = mix(run.sh[i], climb.sh[i]); a.sh.rotation.z = mix(run.shz[i], climb.shz[i]); a.elbow.rotation.x = mix(run.elb[i], climb.elb[i]); });
+  girl.spine.rotation.x = mix(run.spine, climb.spine);
+  girl.hips.position.y = .8 + mix(run.bob, 0) - w * .12;
+}
+
+// ---------- cat ----------
+const cat = (() => {
+  const g = new THREE.Group(), o = M('#e89a4a'), w = M('#f6e9da');
+  const body = mesh(new THREE.CapsuleGeometry(.09, .22, 4, 8), o); body.rotation.x = Math.PI / 2; body.position.y = .2; g.add(body);
+  const head = mesh(new THREE.SphereGeometry(.085, 12, 10), o); head.position.set(0, .3, .2); g.add(head);
+  [-1, 1].forEach(s => { const e = mesh(new THREE.ConeGeometry(.03, .06, 4), o); e.position.set(s * .045, .39, .2); g.add(e); });
+  const legs = [];
+  [[-.05, .12], [.05, .12], [-.05, -.12], [.05, -.12]].forEach(([x, z]) => { const p = new THREE.Group(); p.position.set(x, .17, z); const l = mesh(new THREE.CylinderGeometry(.022, .02, .17, 6), w); l.position.y = -.085; p.add(l); g.add(p); legs.push(p); });
+  const tail = new THREE.Group(); tail.position.set(0, .24, -.2); g.add(tail); rod(tail, V(0, 0, 0), V(0, .12, -.18), .02, .015, o, 6);
+  scene.add(g); return { g, legs, tail };
+})();
+
+// ---------- performance (keyed to the reference timing) ----------
+const G_KEYS = [ // t, x, y(null = ground), z
+  [0.0, -1.3, null, 3.6], [0.45, -.95, null, 2.3], [1.0, -.55, null, .2], [1.6, -.35, null, -2.0], [2.2, -.2, null, -4.3],
+  [2.6, -.1, null, -5.9], [3.1, 0, null, -8.2], [3.8, -.35, null, -11.8], [4.5, -.3, null, -16.2], [4.95, -.1, null, -19.6],
+  [5.2, 0, TOP + .5, -20.25], [5.45, 0, PT, -20.7], [5.8, 0, PT + .12, -20.9], [6.6, 0, PT + .75, -20.95],
+  [7.4, -.15, PT + 1.55, -20.95], [8.4, -.75, PT + 2.2, -21.0], [9.5, -1.35, PT + 2.7, -21.1]
+].map(k => [k[0], k[1], k[2] === null ? groundY(k[3]) : k[2], k[3]]);
+const gPos = track(G_KEYS);
+const gClimb = track([[0, 0], [4.9, 0], [5.15, .8], [5.45, .25], [5.75, 1], [9.5, 1]]);
+const C_KEYS = [ // cat: t, x, y, z
+  [0, .3, TOP, -6.0], [1.2, .2, TOP, -8.2], [2.6, -.4, TOP, -12], [3.6, -.3, TOP, -16.4], [4.1, -.1, TOP, -19.7],
+  [4.35, 0, PT, -20.4], [4.8, 0, PT, -21.05], [5.6, .05, PT + 2.3, -21.25], [6.2, .7, PT + 3.4, -21.8], [6.8, 1.35, PT + 3.85, -22.0], [9.5, 1.45, PT + 3.9, -22.0]
+];
+const cPos = track(C_KEYS);
+const CAM_KEYS = [ // t, pos xyz, look xyz
+  [0.0, .35, .5, 3.6, 0, 3.6, -8], [0.6, .3, .55, 3.4, -.2, 3.2, -7], [1.2, .1, 1.0, 2.0, -.3, 2.8, -6],
+  [2.0, 0, 1.9, -.6, -.1, 3.6, -8], [2.7, 0, 3.3, -3.8, 0, 4.0, -11], [3.3, 0, 3.95, -6.6, -.1, 4.0, -15],
+  [4.0, .2, 3.9, -9.8, -.2, 4.1, -20], [4.7, .2, 3.9, -13.8, -.1, 4.3, -22], [5.4, .1, 3.9, -16.2, 0, 4.6, -22],
+  [6.4, 0, 3.85, -17.6, 0, 5.4, -22], [7.4, 0, 3.9, -18.6, -.2, 6.3, -22], [8.4, .1, 4.0, -19.0, -.6, 7.0, -22], [9.5, .2, 4.0, -19.2, -.9, 7.4, -22]
+];
+const camT = track(CAM_KEYS);
+// integrate stride phase once so scrubbing is deterministic
+const PH_RATE = 240, phaseTable = new Float32Array(Math.ceil(DUR * PH_RATE) + 2);
+(() => { let ph = 0; for (let i = 1; i < phaseTable.length; i++) {
+  const t = i / PH_RATE, a = gPos(t), b = gPos(t - 1 / PH_RATE), w = gClimb(t);
+  const hs = Math.hypot(a[0] - b[0], a[2] - b[2]) * PH_RATE, vs = Math.abs(a[1] - b[1]) * PH_RATE;
+  ph += ((1 - w) * 3.6 * hs + w * (3 + 6 * vs)) / PH_RATE; phaseTable[i] = ph; } })();
+const phaseAt = t => phaseTable[clamp(Math.round(t * PH_RATE), 0, phaseTable.length - 1)];
+function yawOf(fn, t, fallback) { const a = fn(t + .06), b = fn(t - .06), dx = a[0] - b[0], dz = a[2] - b[2]; return Math.hypot(dx, dz) > .08 ? Math.atan2(dx, dz) : fallback; }
+
+const BEATS = [
+  { t0: 0, t1: .5, name: '오프닝', en: 'Low angle at the foot of stone shrine stairs looking up at a red torii; an orange cat darts through the gate.', ko: '계단 아래 로우앵글, 위로 빨간 도리이. 고양이가 문 쪽으로 달아난다.' },
+  { t0: .5, t1: 2.6, name: '계단 질주', en: 'The girl sprints past the camera from lower left and races up the stairs; the camera follows close behind and climbs with her.', ko: '아이가 화면 왼쪽 아래에서 카메라를 스치며 들어와 계단을 뛰어오른다. 카메라가 바짝 뒤따라 올라간다.' },
+  { t0: 2.6, t1: 3.3, name: '도리이', en: 'She crests the top step and runs through the torii; the camera passes between the pillars.', ko: '계단 끝을 넘어 도리이를 통과. 카메라도 기둥 사이를 지난다.' },
+  { t0: 3.3, t1: 5.0, name: '광장', en: 'She chases the cat across a sunlit gravel courtyard toward a huge autumn maple on a stone platform; shrine hall on the right, cedars behind.', ko: '햇빛 드는 광장을 가로질러 석단 위 큰 단풍나무로 고양이를 쫓는다. 오른쪽에 본전, 뒤로 삼나무.' },
+  { t0: 5.0, t1: 5.7, name: '석단', en: 'She hops up onto the stone platform at the base of the tree.', ko: '나무 밑 석단 위로 뛰어오른다.' },
+  { t0: 5.7, t1: 9.5, name: '나무타기', en: 'She climbs the trunk and onto a thick branch; the camera pushes in and tilts up; the cat watches from a branch above.', ko: '줄기를 타고 굵은 가지로 올라간다. 카메라는 다가가며 틸트 업. 고양이는 위쪽 가지에서 내려다본다.' }
+];
+
+// ---------- passes ----------
+const depthMat = new THREE.ShaderMaterial({
+  uniforms: { uNear: { value: .5 }, uFar: { value: 45 } }, side: THREE.DoubleSide,
+  vertexShader: 'varying float vD;\n#include <common>\nvoid main(){\n#include <begin_vertex>\n#include <project_vertex>\nvD = -mvPosition.z; }',
+  fragmentShader: 'uniform float uNear; uniform float uFar; varying float vD; void main(){ float d = clamp((vD - uNear) / (uFar - uNear), 0.0, 1.0); gl_FragColor = vec4(vec3(1.0 - pow(d, 0.55)), 1.0); }'
+});
+const WHITE = new THREE.MeshBasicMaterial({ color: 0xffffff }), BLACK = new THREE.MeshBasicMaterial({ color: 0x000000 });
+const allMeshes = []; scene.traverse(o => { if (o.isMesh) { o.userData.mat = o.material; allMeshes.push(o); } });
+let pass = 'shaded';
+function setPass(p) {
+  pass = p;
+  scene.overrideMaterial = p === 'depth' ? depthMat : null;
+  allMeshes.forEach(m => { m.material = p === 'mask' ? (m.userData.isChar ? WHITE : BLACK) : m.userData.mat; });
+  scene.background = p === 'shaded' ? SKY : new THREE.Color(0x000000);
+  scene.fog = p === 'shaded' ? new THREE.Fog(0xcfe3ef, 30, 90) : null;
+  document.getElementById('hudPass').textContent = { shaded: 'SHADED', depth: 'DEPTH', mask: 'MASK' }[p];
+  document.querySelectorAll('[data-pass]').forEach(b => b.setAttribute('aria-pressed', b.dataset.pass === p));
+}
+
+// ---------- evaluate a moment ----------
+function evaluate(t) {
+  const p = gPos(t), w = clamp(gClimb(t), 0, 1);
+  girl.g.position.set(p[0], p[1], p[2]);
+  girl.g.rotation.y = t > 5.3 ? Math.PI : yawOf(gPos, t, Math.PI);
+  poseGirl(phaseAt(t), w, t < 2.7 ? .42 : .28);
+  const c = cPos(t), climbing = t > 4.8 && t < 6.9;
+  cat.g.position.set(c[0], c[1], c[2]);
+  cat.g.rotation.set(climbing && t < 5.7 ? -1.2 : 0, t > 6.8 ? -2.4 : yawOf(cPos, t, Math.PI), 0, 'YXZ');
+  const moving = t < 6.8, cph = t * 16;
+  cat.legs.forEach((l, i) => l.rotation.x = moving ? Math.sin(cph + (i % 2 ? Math.PI : 0) + (i > 1 ? .8 : 0)) * .7 : 0);
+  cat.tail.rotation.x = Math.sin(t * 3) * .3;
+  const k = camT(t);
+  camera.position.set(k[0], k[1], k[2]); camera.lookAt(k[3], k[4], k[5]);
+}
+
+// ---------- UI ----------
+const $ = id => document.getElementById(id);
+const tl = $('tl'), ph = $('ph'), ref = $('ref');
+BEATS.forEach(b => {
+  const d = document.createElement('div'); d.className = 'beat'; d.style.flex = (b.t1 - b.t0) + ' 1 0';
+  d.innerHTML = `<span>${b.name}</span><small>${b.t0.toFixed(1)}–${b.t1.toFixed(1)}s</small>`; tl.insertBefore(d, ph); b.el = d;
+  const li = document.createElement('li'); li.innerHTML = `<span class="t">${b.t0.toFixed(1)}–${b.t1.toFixed(1)}s</span><span>${b.ko}</span>`; $('beatList').appendChild(li);
+});
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+let T = reduce ? 6.5 : 0, playing = !reduce, last = performance.now(), scrub = false;
+function syncPlay() {
+  $('playIcon').innerHTML = playing ? '<path d="M3 2h4v12H3zM9 2h4v12H9z"/>' : '<path d="M4 2l10 6-10 6z"/>';
+  $('hudState').textContent = playing ? '● PLAY' : '❚❚ PAUSE';
+  if (!$('pip').hidden) { if (playing) ref.play().catch(() => {}); else ref.pause(); }
+}
+$('bPlay').onclick = () => { if (!playing && T >= DUR - .01) T = 0; playing = !playing; syncPlay(); };
+$('bStep').onclick = () => { playing = false; T = Math.min(DUR - 1e-4, (Math.round(T * FPS) + 1) / FPS); syncPlay(); };
+document.querySelectorAll('[data-pass]').forEach(b => b.onclick = () => setPass(b.dataset.pass));
+$('bRef').onclick = e => { const on = $('pip').hidden; $('pip').hidden = !on; e.currentTarget.setAttribute('aria-pressed', on); ref.currentTime = T; syncPlay(); };
+const seek = e => { const b = tl.getBoundingClientRect(); T = clamp((e.clientX - b.left) / b.width, 0, 1) * (DUR - 1e-4); };
+tl.addEventListener('pointerdown', e => { scrub = true; tl.setPointerCapture(e.pointerId); seek(e); });
+tl.addEventListener('pointermove', e => scrub && seek(e));
+tl.addEventListener('pointerup', () => scrub = false);
+tl.addEventListener('keydown', e => { if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); playing = false; syncPlay(); T = clamp(T + (e.key === 'ArrowRight' ? 1 : -1) / FPS, 0, DUR - 1e-4); } });
+addEventListener('keydown', e => { if (e.target.closest && e.target.closest('input,textarea,[role=slider]')) return; if (e.code === 'Space') { e.preventDefault(); $('bPlay').click(); } });
+
+// character sheet
+const store = { get(k) { try { return JSON.parse(localStorage.getItem('shrine-previz:' + k)); } catch (_) { return null; } }, set(k, v) { try { localStorage.setItem('shrine-previz:' + k, JSON.stringify(v)); } catch (_) {} } };
+let activePart = 'top';
+const saved = store.get('colors') || {};
+PARTS.forEach(p => {
+  if (saved[p.key]) PM[p.key].color.set(saved[p.key]);
+  const b = document.createElement('button'); b.className = 'part'; b.type = 'button'; b.id = 'part-' + p.key;
+  b.innerHTML = `<i></i><span>${p.label}</span>`; b.onclick = () => { activePart = p.key; syncParts(); };
+  $('parts').appendChild(b); p.btn = b;
+});
+function syncParts() { PARTS.forEach(p => { p.btn.querySelector('i').style.background = '#' + PM[p.key].color.getHexString(); p.btn.setAttribute('aria-pressed', p.key === activePart); }); }
+syncParts();
+const sc = $('sheetCanvas'), sctx = sc.getContext('2d', { willReadFrequently: true });
+function loadSheet(file) {
+  if (!file || !file.type.startsWith('image/')) return;
+  const img = new Image(); img.onload = () => {
+    const maxW = 900, s = Math.min(1, maxW / img.width); sc.width = img.width * s; sc.height = img.height * s;
+    sctx.drawImage(img, 0, 0, sc.width, sc.height); sc.hidden = false; $('sheetEmpty').hidden = true; URL.revokeObjectURL(img.src);
+  }; img.src = URL.createObjectURL(file);
+}
+$('sheetFile').onchange = e => loadSheet(e.target.files[0]);
+const sheet = $('sheet');
+sheet.addEventListener('dragover', e => { e.preventDefault(); sheet.classList.add('drag'); });
+sheet.addEventListener('dragleave', () => sheet.classList.remove('drag'));
+sheet.addEventListener('drop', e => { e.preventDefault(); sheet.classList.remove('drag'); loadSheet(e.dataTransfer.files[0]); });
+sc.addEventListener('click', e => {
+  const b = sc.getBoundingClientRect(), x = Math.round((e.clientX - b.left) / b.width * sc.width), y = Math.round((e.clientY - b.top) / b.height * sc.height);
+  const d = sctx.getImageData(clamp(x - 2, 0, sc.width - 5), clamp(y - 2, 0, sc.height - 5), 5, 5).data; let R = 0, G = 0, B = 0;
+  for (let i = 0; i < d.length; i += 4) { R += d[i]; G += d[i + 1]; B += d[i + 2]; }
+  const n = d.length / 4; PM[activePart].color.setRGB(R / n / 255, G / n / 255, B / n / 255);
+  const out = {}; PARTS.forEach(p => out[p.key] = '#' + PM[p.key].color.getHexString()); store.set('colors', out);
+  const i = PARTS.findIndex(p => p.key === activePart); activePart = PARTS[(i + 1) % PARTS.length].key; syncParts();
+});
+const hIn = $('height'); hIn.value = store.get('height') || 1.45;
+const syncH = () => { setHeight(+hIn.value); $('hVal').textContent = (+hIn.value).toFixed(2) + ' m'; store.set('height', +hIn.value); };
+hIn.oninput = syncH; syncH();
+
+// prompt pack
+const DEF_DESC = 'a girl of about 10–12 with long straight black hair, a blue short-sleeve shirt with a white floral print, beige shorts, a navy backpack and white sneakers';
+const DEF_STYLE = 'Hand-painted Japanese anime feature-film look, bright midday autumn sun, red-orange maple leaves, deep blue sky, crisp cast shadows, gentle handheld camera.';
+$('desc').value = store.get('desc') || DEF_DESC; $('style').value = store.get('style') || DEF_STYLE;
+function buildPrompt() {
+  const lines = [
+    `CHARACTER: ${$('desc').value.trim()}. Match the attached character sheet exactly (face, hair, outfit, colors, proportions). Keep her identical in every frame.`,
+    `SHOT: one continuous 9.5-second follow shot, 24mm lens, 24 fps, 16:9. Follow the previz video exactly for camera path, timing, framing and blocking. Replace the grey mannequin with the character; replace the orange block cat with a real orange tabby cat.`,
+    ...BEATS.map(b => `${b.t0.toFixed(1)}–${b.t1.toFixed(1)}s  ${b.en}`),
+    `STYLE: ${$('style').value.trim()}`
+  ];
+  $('prompt').value = lines.join('\n');
+}
+['desc', 'style'].forEach(id => $(id).addEventListener('input', () => { store.set(id, $(id).value); buildPrompt(); }));
+buildPrompt();
+$('bCopy').onclick = () => {
+  const done = m => $('copyMsg').textContent = m;
+  navigator.clipboard.writeText($('prompt').value).then(() => done('복사했습니다'), () => { $('prompt').select(); done('선택됨: Ctrl+C로 복사하세요'); });
+};
+
+// ---------- loop ----------
+function resize(w, h) { w = w || vp.clientWidth; h = h || vp.clientHeight; if (w && h) renderer.setSize(w, h, false); }
+new ResizeObserver(() => !window.__offline && resize()).observe(vp); resize();
+function draw() {
+  evaluate(T); renderer.render(scene, camera);
+  const f = Math.min(FRAMES - 1, Math.floor(T * FPS));
+  $('hudTc').textContent = `00:00:${String(Math.floor(f / FPS)).padStart(2, '0')}:${String(f % FPS).padStart(2, '0')}`;
+  $('tc').textContent = `f ${String(f).padStart(3, '0')} / ${FRAMES}`;
+  ph.style.left = (T / DUR * 100) + '%'; tl.setAttribute('aria-valuenow', T.toFixed(2));
+  const b = BEATS.find(x => T >= x.t0 && T < x.t1) || BEATS[BEATS.length - 1];
+  BEATS.forEach(x => x.el.classList.toggle('active', x === b)); $('hudBeat').textContent = b.name + ' · ' + b.t0.toFixed(1) + '–' + b.t1.toFixed(1) + 's';
+  if (!$('pip').hidden && (!playing || Math.abs(ref.currentTime - T) > .15)) ref.currentTime = T;
+}
+function frame(now) {
+  const dt = Math.min(.1, (now - last) / 1000); last = now;
+  if (playing && !scrub) { T += dt; if (T >= DUR) { T %= DUR; if (!$('pip').hidden) ref.currentTime = T; } }
+  if (!window.__offline) draw();
+  requestAnimationFrame(frame);
+}
+syncPlay(); setPass('shaded'); requestAnimationFrame(frame);
+
+// hook for offline frame export
+window.__previz = { FRAMES, FPS, setPass, renderFrame(f, w, h) { window.__offline = true; resize(w, h); renderer.setPixelRatio(1); T = f / FPS; evaluate(T); renderer.render(scene, camera); return canvas.toDataURL('image/jpeg', .92); } };
+})();
+</script>
