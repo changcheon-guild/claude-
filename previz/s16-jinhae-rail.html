@@ -80,6 +80,11 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 .files { display: grid; gap: 4px; font-family: var(--font-mono); font-size: 12px; }
 .files div { display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px solid var(--line); padding: 4px 0; }
 .files span:last-child { color: var(--muted); text-align: right; }
+.dl { display: grid; gap: 6px; }
+.dl button { justify-content: space-between; width: 100%; height: auto; min-height: 40px; padding: 6px 10px; text-align: left; }
+.dl button b { font: 500 12px var(--font-mono); }
+.dl button span { font-size: 12px; color: var(--muted); }
+.dl button[disabled] { opacity: .45; cursor: default; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 </style>
 
@@ -145,9 +150,15 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
       </div>
 
       <div class="panel">
-        <h2>생성 패키지 (저장소 previz/out/s16/)</h2>
-        <div class="files">
-          <div><span>s16_shaded.mp4</span><span>카메라·동선 기준 (블러)</span></div>
+        <h2>다운로드</h2>
+        <div class="dl" id="dl">
+          <button data-file="s16_shaded.mp4"><b>s16_shaded.mp4</b><span>프리비즈 · 모션블러</span></button>
+          <button data-file="s16_shaded_sharp.mp4"><b>s16_shaded_sharp.mp4</b><span>블러 없음</span></button>
+          <button data-file="s16_depth.mp4"><b>s16_depth.mp4</b><span>뎁스 컨트롤</span></button>
+          <button data-file="s16_mask.mp4"><b>s16_mask.mp4</b><span>캐릭터 마스크</span></button>
+          <button data-file="s16_prompt.md"><b>s16_prompt.md</b><span>뉴테이크 프롬프트</span></button>
+        </div>
+        <p class="hint" id="dlMsg">1280×720 · 24fps · 5초 · 무음. 버튼을 누르면 저장 확인 창이 뜹니다.</p>
           <div><span>s16_shaded_sharp.mp4</span><span>블러 없는 버전</span></div>
           <div><span>s16_depth.mp4</span><span>뎁스 컨트롤</span></div>
           <div><span>s16_mask.mp4</span><span>아이 마스크</span></div>
@@ -486,6 +497,24 @@ $('bCopy').onclick = () => {
   const done = m => $('copyMsg').textContent = m;
   navigator.clipboard.writeText($('prompt').value).then(() => done('복사했습니다'), () => { $('prompt').select(); done('선택됨: Ctrl+C로 복사하세요'); });
 };
+
+// ---------- downloads ----------
+(async () => {
+  const btns = [...document.querySelectorAll('#dl [data-file]')], msg = $('dlMsg');
+  btns.forEach(b => b.disabled = true);
+  const downloads = window.claude && typeof window.claude.use === 'function' ? await window.claude.use('downloads').catch(() => null) : null;
+  if (!downloads) { msg.textContent = '이 보기에서는 다운로드를 쓸 수 없습니다. 저장소 previz/out/s16/ 에서 받으세요.'; return; }
+  btns.forEach(b => { b.disabled = false; b.onclick = async () => {
+    const name = b.dataset.file; b.disabled = true; msg.textContent = name + ' 준비 중…';
+    try {
+      const res = await fetch(name); if (!res.ok) throw { code: 'fetch' };
+      await downloads.save({ filename: name, data: await res.blob() });
+      msg.textContent = name + ' 저장했습니다.';
+    } catch (e) {
+      msg.textContent = e && e.code === 'declined' ? '저장을 취소했습니다.' : e && e.code === 'rate_limited' ? '다른 저장 창이 열려 있습니다. 잠시 후 다시 누르세요.' : name + '을(를) 저장하지 못했습니다.';
+    } finally { b.disabled = false; }
+  }; });
+})();
 
 // ---------- loop ----------
 function resize(w, h) { w = w || vp.clientWidth; h = h || vp.clientHeight; if (w && h) renderer.setSize(w, h, false); }
